@@ -45,7 +45,8 @@ public class FolderSynchornizationService
 	{
 		try
 		{
-			FileHelpers.CopyDirectory(_sourceRootPath, _replicaRootPath, true, _logger);
+			FileHelpers.CopyDirectory(_sourceRootPath, _replicaRootPath, _logger);
+			FileHelpers.RemoveReplicaDirFilesNotInSourceDir(_replicaRootPath, _sourceRootPath, _logger);
 		}
 		catch (Exception ex)
 		{

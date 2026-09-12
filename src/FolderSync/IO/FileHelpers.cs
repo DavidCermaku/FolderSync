@@ -5,21 +5,19 @@ namespace FolderSync.IO;
 
 internal static class FileHelpers
 {
-	public static void CopyDirectory(string sourceDir, string destinationDir, bool recursive, ILogger logger)
+	public static void CopyDirectory(string sourceDir, string destinationDir, ILogger logger)
 	{
 		var dir = new DirectoryInfo(sourceDir);
 
 		if (!dir.Exists)
 			throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
 
-		DirectoryInfo[] dirs = dir.GetDirectories();
-
 		Directory.CreateDirectory(destinationDir);
 
-		foreach (FileInfo file in dir.GetFiles())
+		foreach (var file in dir.GetFiles())
 		{
-			string targetFilePath = Path.Combine(destinationDir, file.Name);
-			
+			var targetFilePath = Path.Combine(destinationDir, file.Name);
+
 			if (File.Exists(targetFilePath))
 			{
 				var targetFile = new FileInfo(targetFilePath);
@@ -29,6 +27,8 @@ internal static class FileHelpers
 				}
 				else
 				{
+					logger.LogInfo($"FILE ALREADY EXISTS BUT DIFFERENT, REPLACING OLD: {targetFile.FullName}");
+
 					CopyFile(file, targetFilePath, logger);
 				}
 			}
@@ -38,12 +38,41 @@ internal static class FileHelpers
 			}
 		}
 
-		if (recursive)
+		var dirs = dir.GetDirectories();
+		foreach (var subDir in dirs)
 		{
-			foreach (DirectoryInfo subDir in dirs)
+			var newDestinationDir = Path.Combine(destinationDir, subDir.Name);
+			CopyDirectory(subDir.FullName, newDestinationDir, logger);
+		}
+	}
+
+	internal static void RemoveReplicaDirFilesNotInSourceDir(string replicaDir, string sourceDir, ILogger logger)
+	{
+		var dirReplica = new DirectoryInfo(replicaDir);
+		if (!dirReplica.Exists)
+			throw new DirectoryNotFoundException($"Replica directory not found: {dirReplica.FullName}");
+
+		var dirSource = new DirectoryInfo(sourceDir);
+		if (!dirSource.Exists)
+		{
+			dirReplica.Delete(true);
+		}
+		else
+		{
+			var filesToRemove = dirReplica.GetFiles()
+						.Where(file => !File.Exists(Path.Combine(sourceDir, file.Name)));
+
+			foreach (var file in filesToRemove)
 			{
-				string newDestinationDir = Path.Combine(destinationDir, subDir.Name);
-				CopyDirectory(subDir.FullName, newDestinationDir, true, logger);
+				RemoveFile(file, logger);
+			}
+
+			var dirs = dirReplica.GetDirectories();
+			foreach (var subDir in dirs)
+			{
+				var newReplicaDir = Path.Combine(replicaDir, subDir.Name);
+				var newSourceDir = Path.Combine(sourceDir, subDir.Name);
+				RemoveReplicaDirFilesNotInSourceDir(newReplicaDir, newSourceDir, logger);
 			}
 		}
 	}
@@ -54,6 +83,19 @@ internal static class FileHelpers
 		{
 			file.CopyTo(targetFilePath);
 			logger.LogInfo($"CREATED file {targetFilePath}");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError(ex.Message);
+		}
+	}
+
+	private static void RemoveFile(FileInfo file, ILogger logger)
+	{
+		try
+		{
+			file.Delete();
+			logger.LogInfo($"REMOVED file {file.FullName}");
 		}
 		catch (Exception ex)
 		{
