@@ -10,6 +10,7 @@ public class FolderSynchornizationService
 	private readonly string _sourceRootPath;
 	private readonly string _replicaRootPath;
 	private readonly TimeSpan _interval;
+	private double _syncCycle;
 
 	public FolderSynchornizationService(ILogger logger, string sourcePath, string replicaPath, TimeSpan interval)
 	{
@@ -17,6 +18,7 @@ public class FolderSynchornizationService
 		_sourceRootPath = Path.GetFullPath(sourcePath);
 		_replicaRootPath = Path.GetFullPath(replicaPath);
 		_interval = interval;
+		_syncCycle = 0;
 	}
 
 	internal async Task StartAsync(CancellationToken ct)
@@ -45,8 +47,11 @@ public class FolderSynchornizationService
 	{
 		try
 		{
+			_syncCycle++;
+			_logger.LogInfo($"Starting synchronization cycle {_syncCycle}");
 			FileHelpers.CopyDirectory(_sourceRootPath, _replicaRootPath, _logger);
 			FileHelpers.RemoveReplicaDirFilesNotInSourceDir(_replicaRootPath, _sourceRootPath, _logger);
+			_logger.LogInfo($"Synchronization cycle {_syncCycle} finished");
 		}
 		catch (Exception ex)
 		{

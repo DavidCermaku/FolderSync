@@ -10,31 +10,31 @@ internal static class FileHelpers
 		var dir = new DirectoryInfo(sourceDir);
 
 		if (!dir.Exists)
-			throw new DirectoryNotFoundException($"Source directory not found: {dir.FullName}");
+			throw new DirectoryNotFoundException($"Source directory does not exist: {dir.FullName}");
 
-		Directory.CreateDirectory(destinationDir);
+		CreateDirectory(destinationDir, logger);
 
 		foreach (var file in dir.GetFiles())
 		{
 			var targetFilePath = Path.Combine(destinationDir, file.Name);
 
-			if (File.Exists(targetFilePath))
+			try
 			{
-				var targetFile = new FileInfo(targetFilePath);
-				if (FileComparer.CompareFiles(file, targetFile))
+				if (Directory.Exists(targetFilePath))
 				{
-					logger.LogInfo($"\nSKIPPING file: {file.FullName}\nSAME ALREADY EXISTS at: {targetFile.FullName}");
+					RemoveDirectory(new DirectoryInfo(targetFilePath), logger);
 				}
-				else
-				{
-					logger.LogInfo($"FILE ALREADY EXISTS BUT DIFFERENT, REPLACING OLD: {targetFile.FullName}");
 
-					CopyFile(file, targetFilePath, logger);
+				if (File.Exists(targetFilePath) && FileComparer.CompareFiles(file, new FileInfo(targetFilePath)))
+				{
+					continue;
 				}
-			}
-			else
-			{
+
 				CopyFile(file, targetFilePath, logger);
+			}
+			catch (Exception ex)
+			{
+				logger.LogError($"Failed to copy file {file.FullName}: {ex.Message}");
 			}
 		}
 
@@ -50,44 +50,67 @@ internal static class FileHelpers
 	{
 		var dirReplica = new DirectoryInfo(replicaDir);
 		if (!dirReplica.Exists)
-			throw new DirectoryNotFoundException($"Replica directory not found: {dirReplica.FullName}");
+			throw new DirectoryNotFoundException($"Replica directory does not exist: {dirReplica.FullName}");
 
 		var dirSource = new DirectoryInfo(sourceDir);
 		if (!dirSource.Exists)
 		{
-			dirReplica.Delete(true);
+			RemoveDirectory(dirReplica, logger);
+			return;
 		}
-		else
+
+		var filesToRemove = dirReplica.GetFiles()
+					.Where(file => !File.Exists(Path.Combine(sourceDir, file.Name)));
+
+		foreach (var file in filesToRemove)
 		{
-			var filesToRemove = dirReplica.GetFiles()
-						.Where(file => !File.Exists(Path.Combine(sourceDir, file.Name)));
+			RemoveFile(file, logger);
+		}
 
-			foreach (var file in filesToRemove)
-			{
-				RemoveFile(file, logger);
-			}
+		var dirs = dirReplica.GetDirectories();
+		foreach (var subDir in dirs)
+		{
+			var newReplicaDir = Path.Combine(replicaDir, subDir.Name);
+			var newSourceDir = Path.Combine(sourceDir, subDir.Name);
+			RemoveReplicaDirFilesNotInSourceDir(newReplicaDir, newSourceDir, logger);
+		}
+	}
 
-			var dirs = dirReplica.GetDirectories();
-			foreach (var subDir in dirs)
-			{
-				var newReplicaDir = Path.Combine(replicaDir, subDir.Name);
-				var newSourceDir = Path.Combine(sourceDir, subDir.Name);
-				RemoveReplicaDirFilesNotInSourceDir(newReplicaDir, newSourceDir, logger);
-			}
+	private static void CreateDirectory(string destinationDir, ILogger logger)
+	{
+		if (Directory.Exists(destinationDir)) return;
+
+		if (File.Exists(destinationDir))
+		{
+			RemoveFile(new FileInfo(destinationDir), logger);
+		}
+
+		Directory.CreateDirectory(destinationDir);
+		logger.LogInfo($"CREATED directory {destinationDir}");
+	}
+
+	private static void RemoveDirectory(DirectoryInfo dir, ILogger logger)
+	{
+		try
+		{
+			dir.Delete(true);
+			logger.LogInfo($"REMOVED directory {dir.FullName}");
+		}
+		catch (Exception ex)
+		{
+			logger.LogError($"ERROR on removing directory {dir.FullName}: {ex.Message}");
 		}
 	}
 
 	private static void CopyFile(FileInfo file, string targetFilePath, ILogger logger)
 	{
-		try
-		{
-			file.CopyTo(targetFilePath);
-			logger.LogInfo($"CREATED file {targetFilePath}");
-		}
-		catch (Exception ex)
-		{
-			logger.LogError(ex.Message);
-		}
+		var replacing = File.Exists(targetFilePath);
+
+		file.CopyTo(targetFilePath, true);
+
+		logger.LogInfo(replacing
+			? $"REPLACED file {targetFilePath}"
+			: $"CREATED file {targetFilePath}");
 	}
 
 	private static void RemoveFile(FileInfo file, ILogger logger)
@@ -99,7 +122,7 @@ internal static class FileHelpers
 		}
 		catch (Exception ex)
 		{
-			logger.LogError(ex.Message);
+			logger.LogError($"ERROR during file removal: {file.FullName}:\n{ex.Message}");
 		}
 	}
 }
