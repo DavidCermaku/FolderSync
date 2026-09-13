@@ -10,18 +10,26 @@ internal static class OptionsParser
 		var parsedArgsResult = CommandLineParser.Parse(CommandLineArguments.Command, args);
 		EnsureArgsParsed(parsedArgsResult);
 
-		return FolderSyncOptions.FromParseResult(parsedArgsResult);
+		var options = FolderSyncOptions.FromParseResult(parsedArgsResult);
+		EnsureOptionsValid(options);
+
+		return options;
+	}
+
+	private static void EnsureOptionsValid(FolderSyncOptions options)
+	{
+		var validationErrors = OptionsValidator.Validate(options);
+		if (validationErrors.Count == 0) return;
+
+		throw new ArgumentException(string.Join(Environment.NewLine, validationErrors));
 	}
 
 	private static void EnsureArgsParsed(ParseResult parsedArgsResult)
 	{
 		if (!parsedArgsResult.Errors.Any()) return;
 
-		foreach (var error in parsedArgsResult.Errors)
-		{
-			Console.Error.WriteLine($"Error when parsing input argument {error.SymbolResult}error during parsing.");
-		}
+		var messages = parsedArgsResult.Errors.Select(error => error.Message);
 
-		throw new ArgumentException();
+		throw new ArgumentException(string.Join(Environment.NewLine, messages));
 	}
 }
