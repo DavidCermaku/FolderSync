@@ -21,7 +21,7 @@ public class FolderSynchornizationService
 		_syncCycle = 0;
 	}
 
-	internal async Task StartAsync(CancellationToken ct)
+	public async Task StartAsync(CancellationToken ct)
 	{
 		while (!ct.IsCancellationRequested)
 		{
